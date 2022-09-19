@@ -2,7 +2,7 @@
 
 use crate::cmd::apply::apply;
 use crate::cmd::dev::cmd_dev;
-use crate::project::{create_project, CreateProjectOptions};
+use crate::project::{create_project, CreateProjectOptions, read_manifest};
 use crate::server::{start_server, wait};
 use anyhow::{anyhow, Result};
 use chisel::chisel_rpc_client::ChiselRpcClient;
@@ -14,6 +14,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 use structopt::StructOpt;
+use structopt::clap::AppSettings;
 
 mod chisel;
 mod cmd;
@@ -58,10 +59,13 @@ enum Command {
     /// Describe the endpoints, types, and policies.
     Describe,
     /// Start a ChiselStrike server for local development.
+    #[structopt(settings(&[AppSettings::TrailingVarArg, AppSettings::AllowLeadingHyphen]))]
     Dev {
         /// calls tsc --noEmit to check types. Useful if your IDE isn't doing it.
         #[structopt(long)]
         type_check: bool,
+        /// Remaining arguments will be forwarded to the server.
+        server_options: Vec<String>,
     },
     /// Create a new ChiselStrike project.
     New {
@@ -78,7 +82,11 @@ enum Command {
         auto_index: bool,
     },
     /// Start the ChiselStrike server.
-    Start,
+    #[structopt(settings(&[AppSettings::TrailingVarArg, AppSettings::AllowLeadingHyphen]))]
+    Start {
+        /// Remaining arguments will be forwarded to the server.
+        server_options: Vec<String>,
+    },
     /// Show ChiselStrike server status.
     Status,
     /// Restart the running ChiselStrike server.
@@ -133,6 +141,17 @@ async fn populate(server_url: String, to_version: String, from_version: String) 
             .await
     );
     println!("{}", msg.msg);
+    Ok(())
+}
+
+async fn launch_server(server_url: String, dev: bool, type_check: bool, server_options: Vec<String>) -> Result<()> {
+    let manifest = if dev { Some(read_manifest()?) } else { None };
+    let mut server = start_server(Some(server_options))?;
+    wait(server_url.clone()).await?;
+    if dev {
+        cmd_dev(server_url, manifest.unwrap(), type_check).await?;
+    }
+    server.wait()?;
     Ok(())
 }
 
@@ -209,8 +228,11 @@ async fn main() -> Result<()> {
                 println!("}}");
             }
         }
-        Command::Dev { type_check } => {
-            cmd_dev(server_url.clone(), type_check).await?;
+        Command::Dev {
+            type_check,
+            server_options,
+        } => {
+            launch_server(server_url, true, type_check, server_options).await?;
         }
         Command::New {
             path,
@@ -241,10 +263,8 @@ async fn main() -> Result<()> {
             };
             create_project(path, opts)?;
         }
-        Command::Start => {
-            let mut server = start_server()?;
-            wait(server_url).await?;
-            server.wait()?;
+        Command::Start { server_options } => {
+            launch_server(server_url, false, false, server_options).await?;
         }
         Command::Status => {
             let mut client = ChiselRpcClient::connect(server_url).await?;

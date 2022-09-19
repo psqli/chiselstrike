@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: © 2021 ChiselStrike <info@chiselstrike.com>
 
 use crate::cmd::apply::{apply, AllowTypeDeletion, TypeChecking};
-use crate::project::read_manifest;
-use crate::server::{start_server, wait};
+use crate::project::Manifest;
 use crate::DEFAULT_API_VERSION;
 use anyhow::Result;
 use deno_core::futures;
@@ -16,11 +15,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tsc_compile::deno_core;
 
-pub(crate) async fn cmd_dev(server_url: String, type_check: bool) -> Result<()> {
+pub(crate) async fn cmd_dev(server_url: String, manifest: Manifest, type_check: bool) -> Result<()> {
     let type_check = type_check.into();
-    let manifest = read_manifest()?;
-    let mut server = start_server()?;
-    wait(server_url.clone()).await?;
     apply_from_dev(server_url.clone(), type_check).await;
     let (mut tx, mut rx) = channel(1);
     let mut apply_watcher = RecommendedWatcher::new(move |res: Result<Event, notify::Error>| {
@@ -63,8 +59,6 @@ pub(crate) async fn cmd_dev(server_url: String, type_check: bool) -> Result<()> 
             Err(e) => println!("watch error: {:?}", e),
         }
     }
-    server.wait()?;
-
     Ok(())
 }
 
