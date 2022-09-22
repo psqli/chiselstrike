@@ -84,6 +84,12 @@ enum Command {
     /// Start the ChiselStrike server.
     #[structopt(settings(&[AppSettings::TrailingVarArg, AppSettings::AllowLeadingHyphen]))]
     Start {
+        /// Enable development mode
+        #[structopt(short, long)]
+        dev: bool,
+        /// calls tsc --noEmit to check types. Useful if your IDE isn't doing it.
+        #[structopt(long, requires = "dev")]
+        type_check: bool,
         /// Remaining arguments will be forwarded to the server.
         server_options: Vec<String>,
     },
@@ -263,8 +269,12 @@ async fn main() -> Result<()> {
             };
             create_project(path, opts)?;
         }
-        Command::Start { server_options } => {
-            launch_server(server_url, false, false, server_options).await?;
+        Command::Start {
+            dev,
+            type_check,
+            server_options,
+        } => {
+            launch_server(server_url, dev, type_check, server_options).await?;
         }
         Command::Status => {
             let mut client = ChiselRpcClient::connect(server_url).await?;
